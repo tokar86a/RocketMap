@@ -2673,6 +2673,20 @@ def clean_db_loop(args):
                         Pokestop.lure_expiration < datetime.utcnow()))
                 query.execute()
 
+                # Remove old gym Details.
+                query = (GymDetails
+                         .delete()
+                         .where(GymDetails.last_scanned <
+                                (datetime.now() - timedelta(days=1))))
+                query.execute()
+
+                # Remove old gym locations.
+                query = (Gym
+                         .delete()
+                         .where(Gym.last_scanned <
+                                (datetime.now() - timedelta(days=1))))
+                query.execute()
+
                 # Remove old (unusable) captcha tokens
                 query = (Token
                          .delete()
