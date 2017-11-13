@@ -2652,6 +2652,11 @@ def db_updater(q, db):
 
 
 def clean_db_loop(args):
+    if args.db_type == 'mysql':
+        step = 250
+    else:
+        step = 50
+    cycle = 0
     while True:
         try:
             with MainWorker.database().execution_context():
@@ -2672,6 +2677,21 @@ def clean_db_loop(args):
                     lure_expiration=None, active_fort_modifier=None).where(
                         Pokestop.lure_expiration < datetime.utcnow()))
                 query.execute()
+
+                # Remove old (unusable) captcha tokens
+                query = (Token
+                         .delete()
+                         .where((Token.last_updated <
+                                 (datetime.utcnow() - timedelta(minutes=2)))))
+                query.execute()
+
+                if cycle % 10 != 0:
+                    cycle += 1
+                    log.info('Regular database cleaning complete.')
+                    time.sleep(60)
+                    continue
+                else:
+                    cycle = 1
 
                 # Remove old gym Details.
                 query = (GymDetails
@@ -2708,12 +2728,60 @@ def clean_db_loop(args):
                                 (datetime.utcnow() - timedelta(days=7))))
                 query.execute()
 
-                # Remove old (unusable) captcha tokens
-                query = (Token
-                         .delete()
-                         .where((Token.last_updated <
-                                 (datetime.utcnow() - timedelta(minutes=2)))))
-                query.execute()
+                sp_del, sl_del = db_clean_spawnpoints(step)
+
+                # Remove SPDetectionData associated with old SpawnPoint.
+                num_records = len(sp_del)
+                num_rows = 0
+                for i in range(0, num_records, step):
+                    query = (SpawnpointDetectionData
+                             .delete()
+                             .where((SpawnpointDetectionData.spawnpoint_id <<
+                                     sp_del[i:min(i + step, num_records)])))
+                    num_rows += query.execute()
+                log.debug('Deleted old SpawnpointDetectionData: %d', num_rows)
+
+                # Remove ScanSpawnPoint associated with old SpawnPoint.
+                num_records = len(sp_del)
+                num_rows = 0
+                for i in range(0, num_records, step):
+                    query = (ScanSpawnPoint
+                             .delete()
+                             .where((ScanSpawnPoint.spawnpoint <<
+                                     sp_del[i:min(i + step, num_records)])))
+                    num_rows += query.execute()
+                # Remove ScanSpawnPoint associated with old ScanSpawnPoint.
+                num_records = len(sl_del)
+                for i in range(0, num_records, step):
+                    query = (ScanSpawnPoint
+                             .delete()
+                             .where((ScanSpawnPoint.scannedlocation <<
+                                     sl_del[i:min(i + step, num_records)])))
+                    num_rows += query.execute()
+                log.debug('Deleted old ScanSpawnPoint: %d', num_rows)
+
+                # Remove old SpawnPoint.
+                num_records = len(sp_del)
+                num_rows = 0
+                for i in range(0, num_records, step):
+                    query = (SpawnPoint
+                             .delete()
+                             .where((SpawnPoint.id <<
+                                     sp_del[i:min(i + step, num_records)]))
+                             .execute())
+                    num_rows += query
+                log.debug('Deleted old SpawnPoint: %s', num_rows)
+
+                # Remove ScannedLocation associated with old ScanSpawnPoint.
+                num_records = len(sl_del)
+                num_rows = 0
+                for i in range(0, num_records, step):
+                    query = (ScannedLocation
+                             .delete()
+                             .where((ScannedLocation.cellid <<
+                                     sl_del[i:min(i + step, num_records)])))
+                    num_rows += query.execute()
+                log.debug('Deleted old ScannedLocation: %d', num_rows)
 
                 # Remove expired HashKeys
                 query = (HashKeys
@@ -2739,11 +2807,75 @@ def clean_db_loop(args):
                     log.info("Completed purge of old Pokemon spawns. "
                              "%i deleted in %f seconds.",
                              rows, diff.total_seconds())
-
-            log.info('Regular database cleaning complete.')
+            log.info('Full database cleaning complete.')
             time.sleep(60)
         except Exception as e:
             log.exception('Exception in clean_db_loop: %s', repr(e))
+
+
+def db_clean_spawnpoints(step=50, days_age=30, missed=3):
+    # Select SpawnPoint without a valid scan for a long time.
+    query = (SpawnPoint
+             .select(SpawnPoint.id)
+             .where((SpawnPoint.last_scanned <
+                     (datetime.utcnow() - timedelta(days=days_age))) &
+                    (SpawnPoint.missed_count > missed))
+             .dicts())
+    sp_ids = [(sp['id']) for sp in query]
+    sp_delete = set(sp_ids)
+    log.debug('Old SpawnPoint: %d', len(sp_delete))
+
+    # Select ScanSpawnPoint associated with old SpawnPoints.
+    sl_ids = []
+    num_records = len(sp_ids)
+    for i in range(0, num_records, step):
+        query = (ScanSpawnPoint
+                 .select()
+                 .where((ScanSpawnPoint.spawnpoint <<
+                         sp_ids[i:min(i + step, num_records)]))
+                 .dicts())
+        sl_ids.extend([(sp['scannedlocation']) for sp in query])
+    sl_delete = set(sl_ids)
+    log.debug('Old ScannedLocation from SpawnPoint: %d', len(sl_delete))
+
+    # Select ScanSpawnpoint to check other tables.
+    ssp_query = ScanSpawnPoint.select().dicts()
+    ssp_spawnpoints = set()
+    ssp_scannedloc = set()
+
+    log.debug('ScanSpawnPoint count: %d', ssp_query.count())
+    for ssp in ssp_query:
+        ssp_spawnpoints.add(ssp['spawnpoint'])
+        ssp_scannedloc.add(ssp['scannedlocation'])
+
+    # Select SpawnPoint that don't have ScanSpawnPoint.
+    query = (SpawnPoint.select(SpawnPoint.id).dicts())
+    sp_list = [(sp['id']) for sp in query]
+    sp_filtered = [x for x in sp_list if x not in ssp_spawnpoints]
+
+    log.debug('ScanSpawnPoint: %d of %d SpawnPoint.',
+              len(ssp_spawnpoints), len(sp_list))
+    if sp_filtered:
+        log.warning('SpawnPoint missing ScanSpawnPoint: %d',
+                    len(sp_filtered))
+        sp_delete.update(sp_filtered)
+
+    # Select ScannedLocation that don't have ScanSpawnPoint.
+    query = ScannedLocation.select(ScannedLocation.cellid).dicts()
+    sl_list = [(sl['cellid']) for sl in query]
+    sl_filtered = [x for x in sl_list if x not in ssp_scannedloc]
+
+    log.debug('ScanSpawnPoint: %d of %d Scanned Location.',
+              len(ssp_scannedloc), len(sl_list))
+    if sl_filtered:
+        log.warning('ScannedLocation missing ScanSpawnPoint: %d',
+                    len(sl_filtered))
+        sl_delete.update(sl_filtered)
+
+    log.debug('SpawnPoint to delete: %d', len(sp_delete))
+    log.debug('ScannedLocation to delete: %d', len(sl_delete))
+
+    return list(sp_delete), list(sl_delete)
 
 
 def bulk_upsert(cls, data, db):
