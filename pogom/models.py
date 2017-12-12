@@ -2761,7 +2761,7 @@ def clean_db_loop(args):
             log.exception('Exception in clean_db_loop: %s', repr(e))
 
 
-def db_clean_spawnpoints(step=50, days_age=30, missed=3):
+def check_spawnpoint_integrity():
     start = datetime.utcnow()
     sp_delete = set()
     sl_delete = set()
@@ -2810,21 +2810,9 @@ def db_clean_spawnpoints(step=50, days_age=30, missed=3):
     # Filter ScanSpawnPoint missing a ScannedLocation.
     filtered = [x for x in ssp_scannedloc if x not in sl_list]
     if filtered:
-        num_records = len(filtered)
         log.warning('ScanSpawnPoint missing ScannedLocation: %d',
                     len(filtered))
         sl_delete.update(filtered)
-
-    # Select old SpawnPoint.
-    query = (SpawnPoint
-             .select(SpawnPoint.id)
-             .where((SpawnPoint.last_scanned <
-                     (datetime.utcnow() - timedelta(days=days_age))) &
-                    (SpawnPoint.missed_count > missed))
-             .dicts())
-    for sp in query:
-        sp_delete.add(sp['id'])
-    log.debug('Found %d old SpawnPoint.', query.count())
 
     # Select all SpawnPointDetectionData.
     sd_delete = set(sp_delete)
@@ -2842,16 +2830,33 @@ def db_clean_spawnpoints(step=50, days_age=30, missed=3):
                     len(filtered))
         sd_delete.update(filtered)
 
-    num_records = len(sd_delete)
-    sd_delete = list(sd_delete)
+    end = datetime.utcnow()
+    diff = end - start
+    log.info('Completed checkup of SpawnPoint data in %f seconds.',
+             diff.total_seconds())
 
-    # Remove SpawnpointDetectionData associated with old/bad SpawnPoint.
+
+def db_clean_spawnpoints(step=50, age_days=30, missed=3):
+    start = datetime.utcnow()
+
+    # Select old SpawnPoint.
+    query = (SpawnPoint
+             .select(SpawnPoint.id)
+             .where((SpawnPoint.last_scanned <
+                     (datetime.utcnow() - timedelta(days=age_days))) &
+                    (SpawnPoint.missed_count > missed))
+             .dicts())
+    old_sp = [(sp['id']) for sp in query]
+    num_records = len(old_sp)
+    log.debug('Found %d old SpawnPoint.', num_records)
+
+    # Remove SpawnpointDetectionData associated with old SpawnPoint.
     num_rows = 0
     for i in range(0, num_records, step):
         query = (SpawnpointDetectionData
                  .delete()
                  .where((SpawnpointDetectionData.spawnpoint_id <<
-                         sd_delete[i:min(i + step, num_records)])))
+                         old_sp[i:min(i + step, num_records)])))
         num_rows += query.execute()
     if num_rows > 0:
         log.info('Deleted %d SpawnpointDetectionData from old/bad SpawnPoint.',
@@ -2861,26 +2866,23 @@ def db_clean_spawnpoints(step=50, days_age=30, missed=3):
     query = (SpawnpointDetectionData
              .delete()
              .where((SpawnpointDetectionData.scan_time <
-                     (datetime.utcnow() - timedelta(days=days_age)))))
+                     (datetime.utcnow() - timedelta(days=age_days)))))
     num_rows = query.execute()
     if num_rows > 0:
         log.info('Deleted %d old SpawnpointDetectionData.', num_rows)
 
-    num_records = len(sp_delete)
-    sp_delete = list(sp_delete)
-
     # Select ScannedLocation associated with old SpawnPoints.
-    num_rows = 0
+    sl_delete = set()
     for i in range(0, num_records, step):
         query = (ScanSpawnPoint
                  .select()
                  .where((ScanSpawnPoint.spawnpoint <<
-                         sp_delete[i:min(i + step, num_records)]))
+                         old_sp[i:min(i + step, num_records)]))
                  .dicts())
         for sp in query:
             sl_delete.add(sp['scannedlocation'])
-        num_rows += query.count()
-    log.debug('Found %d ScannedLocation from old/bad SpawnPoint.', num_rows)
+    log.debug('Found %d ScannedLocation from old/bad SpawnPoint.',
+              len(sl_delete))
 
     # Remove ScanSpawnPoint associated with old SpawnPoint.
     num_rows = 0
@@ -2888,7 +2890,7 @@ def db_clean_spawnpoints(step=50, days_age=30, missed=3):
         query = (ScanSpawnPoint
                  .delete()
                  .where((ScanSpawnPoint.spawnpoint <<
-                         sp_delete[i:min(i + step, num_records)])))
+                         old_sp[i:min(i + step, num_records)])))
         num_rows += query.execute()
     if num_rows > 0:
         log.info('Deleted %d ScanSpawnPoint from old/bad SpawnPoint.',
@@ -2900,7 +2902,7 @@ def db_clean_spawnpoints(step=50, days_age=30, missed=3):
         query = (SpawnPoint
                  .delete()
                  .where((SpawnPoint.id <<
-                         sp_delete[i:min(i + step, num_records)])))
+                         old_sp[i:min(i + step, num_records)])))
         num_rows += query.execute()
     if num_rows > 0:
         log.info('Deleted %d old SpawnPoint.', num_rows)
@@ -2928,7 +2930,7 @@ def db_clean_spawnpoints(step=50, days_age=30, missed=3):
                  .where((ScannedLocation.cellid <<
                          sl_delete[i:min(i + step, num_records)]) &
                         (ScannedLocation.last_modified <
-                         (datetime.utcnow() - timedelta(days=days_age)))))
+                         (datetime.utcnow() - timedelta(days=age_days)))))
         num_rows += query.execute()
     if num_rows > 0:
         log.info('Deleted %d ScannedLocation from old SpawnPoint.', num_rows)
