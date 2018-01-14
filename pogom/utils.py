@@ -386,6 +386,22 @@ def get_args():
               'queue falls behind.'),
         type=int,
         default=1)
+    group = parser.add_argument_group('Database Cleanup')
+    group.add_argument('-dbc', '--db-cleanup',
+                       help='Enable database regular cleanup thread.',
+                       action='store_true', default=False)
+    group.add_argument('-dbcp', '--db-cleanup-pokemon',
+                       help=('Clear Pokemon from database X hours ' +
+                             'after they disappear (0 to disable).'),
+                       type=int, default=0)
+    group.add_argument('-dbcg', '--db-cleanup-gym',
+                       help=('Clear Gym details from database X ' +
+                             'hours after being scanned (0 to disable).'),
+                       type=int, default=3)
+    group.add_argument('-dbcs', '--db-cleanup-spawnpoint',
+                       help=('Clear Spawnpoint from database without a ' +
+                             'valid scan for X hours (0 to disable).'),
+                       type=int, default=720)
     parser.add_argument(
         '-wh',
         '--webhook',
@@ -397,21 +413,6 @@ def get_args():
                         help=('Get all details about gyms (causes an ' +
                               'additional API hit for every gym).'),
                         action='store_true', default=False)
-    parser.add_argument('-dbc', '--db-cleanup',
-                        help='Enable database regular cleanup thread.',
-                        action='store_true', default=False)
-    parser.add_argument('-dbcp', '--db-cleanup-pokemon',
-                        help=('Clear Pokemon from database X hours ' +
-                              'after they disappear (0 to disable).'),
-                        type=int, default=0)
-    parser.add_argument('-dbcg', '--db-cleanup-gym',
-                        help=('Clear Gym details from database X ' +
-                              'hours after being scanned (0 to disable).'),
-                        type=int, default=3)
-    parser.add_argument('-dbcs', '--db-cleanup-spawnpoint',
-                        help=('Clear Spawnpoint from database without a ' +
-                              'valid scan for X hours (0 to disable).'),
-                        type=int, default=720)
     parser.add_argument(
         '--wh-types',
         help=('Defines the type of messages to send to webhooks.'),
