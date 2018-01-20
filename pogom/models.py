@@ -1783,36 +1783,28 @@ class HashKeys(BaseModel):
     expires = DateTimeField(null=True)
     last_updated = DateTimeField(default=datetime.utcnow)
 
-    @staticmethod
-    def get_by_key(key):
-        query = (HashKeys
-                 .select()
-                 .where(HashKeys.key == key)
-                 .dicts())
-
-        return query[0] if query else {
-            'maximum': 0,
-            'remaining': 0,
-            'peak': 0,
-            'expires': None,
-            'last_updated': None
-        }
-
+    # Obfuscate hashing keys before sending them to the front-end.
     @staticmethod
     def get_obfuscated_keys():
-        # Obfuscate hashing keys before we sent them to the front-end.
         hashkeys = HashKeys.get_all()
         for i, s in enumerate(hashkeys):
             hashkeys[i]['key'] = s['key'][:-9] + '*'*9
         return hashkeys
 
+    # Retrieve stored 'peak' value from recently used hashing keys.
     @staticmethod
-    # Retrieve the last stored 'peak' value for each hashing key.
-    def getStoredPeak(key):
-        with Token.database().execution_context():
-            query = HashKeys.select(HashKeys.peak).where(HashKeys.key == key)
-            result = query[0].peak if query else 0
-            return result
+    def get_stored_peaks():
+        hashkeys = {}
+        with HashKeys.database().execution_context():
+            query = (HashKeys
+                     .select(HashKeys.key, HashKeys.peak)
+                     .where(HashKeys.last_updated >
+                            (datetime.utcnow() - timedelta(minutes=30)))
+                     .dicts())
+            for dbhk in query:
+                hashkeys[dbhk['key']] = dbhk['peak']
+
+        return hashkeys
 
 
 def hex_bounds(center, steps=None, radius=None):
