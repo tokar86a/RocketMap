@@ -2646,15 +2646,19 @@ def db_updater(q, db):
 def clean_db_loop(args):
     step = 250
     cycle = 0
+
+    # Every 10 minutes (10 cycles) run full database cleanup.
+    full_cleanup_period_minutes = 10
     while True:
         try:
-            cycle += 1
             db_cleanup_regular()
-            log.info('Regular database cleanup complete.')
 
-            # Run once every 10 minutes.
-            if cycle % 10 == 0:
-                # If desired, clear old Pokemon spawns.
+            # Remove old worker status entries.
+            if args.db_cleanup_worker > 0:
+                db_cleanup_worker_status(args.db_cleanup_worker)
+
+            if cycle % full_cleanup_period_minutes == 0:
+                # Remove old pokemon spawns.
                 if args.db_cleanup_pokemon > 0:
                     db_clean_pokemons(args.db_cleanup_pokemon)
 
@@ -2666,132 +2670,151 @@ def clean_db_loop(args):
                 if args.db_cleanup_spawnpoint > 0:
                     db_clean_spawnpoints(step, args.db_cleanup_spawnpoint)
 
-                log.info('Full database cleaning complete.')
+                # Remove old pokestop and gym locations.
+                if args.db_cleanup_forts > 0:
+                    db_clean_forts(args.db_cleanup_forts)
+
+                log.info('Full database cleanup completed.')
                 cycle = 0
 
+            # Run this cycle once every minute (60 seconds).
+            cycle += 1
             time.sleep(60)
         except Exception as e:
-            log.exception('Exception in clean_db_loop: %s', repr(e))
+            log.exception('Database cleanup failed: %s', e)
 
 
 def db_cleanup_regular():
-    with MainWorker.database().execution_context():
-        query = (MainWorker
-                 .delete()
-                 .where((MainWorker.last_modified <
-                         (datetime.utcnow() - timedelta(minutes=30)))))
-        query.execute()
+    log.debug('Regular database cleanup started.')
+    start_timer = default_timer()
 
-        query = (WorkerStatus
+    now = datetime.utcnow()
+
+    with Token.database().execution_context():
+        # Remove unusable captcha tokens.
+        query = (Token
                  .delete()
-                 .where((WorkerStatus.last_modified <
-                         (datetime.utcnow() - timedelta(minutes=30)))))
+                 .where(Token.last_updated < now - timedelta(seconds=120)))
         query.execute()
 
         # Remove active modifier from expired lured pokestops.
-        query = (Pokestop.update(
-            lure_expiration=None, active_fort_modifier=None).where(
-                Pokestop.lure_expiration < datetime.utcnow()))
+        query = (Pokestop
+                 .update(lure_expiration=None, active_fort_modifier=None)
+                 .where(Pokestop.lure_expiration < now))
         query.execute()
 
-        # Remove old (unusable) captcha tokens.
-        query = (Token
-                 .delete()
-                 .where((Token.last_updated <
-                         (datetime.utcnow() - timedelta(minutes=2)))))
-        query.execute()
-
-        # Remove expired HashKeys.
+        # Remove expired or inactive hashing keys.
         query = (HashKeys
                  .delete()
-                 .where((HashKeys.expires <
-                         (datetime.utcnow() - timedelta(days=1))) |
-                        (HashKeys.last_updated <
-                         (datetime.utcnow() - timedelta(days=7)))))
+                 .where((HashKeys.expires < now - timedelta(days=1)) |
+                        (HashKeys.last_updated < now - timedelta(days=7))))
         query.execute()
+
+    time_diff = default_timer() - start_timer
+    log.debug('Completed regular cleanup in %.6f seconds.', time_diff)
+
+
+def db_cleanup_worker_status(age_minutes):
+    log.debug('Beginning cleanup of old worker status.')
+    start_timer = default_timer()
+
+    worker_status_timeout = datetime.utcnow() - timedelta(minutes=age_minutes)
+
+    with MainWorker.database().execution_context():
+        # Remove status information from inactive instances.
+        query = (MainWorker
+                 .delete()
+                 .where(MainWorker.last_modified < worker_status_timeout))
+        query.execute()
+
+        # Remove worker status information that are inactive.
+        query = (WorkerStatus
+                 .delete()
+                 .where(MainWorker.last_modified < worker_status_timeout))
+        query.execute()
+
+    time_diff = default_timer() - start_timer
+    log.debug('Completed cleanup of old worker status in %.6f seconds.',
+              time_diff)
 
 
 def db_clean_pokemons(age_hours):
+    log.debug('Beginning cleanup of old pokemon spawns.')
+    start_timer = default_timer()
+
+    pokemon_timeout = datetime.utcnow() - timedelta(hours=age_hours)
+
     with Pokemon.database().execution_context():
-        log.info('Beginning cleanup of old Pokemon spawns.')
-        start_timer = default_timer()
         query = (Pokemon
                  .delete()
-                 .where((Pokemon.disappear_time <
-                         (datetime.utcnow() - timedelta(hours=age_hours)))))
+                 .where(Pokemon.disappear_time < pokemon_timeout))
         rows = query.execute()
-        time_diff = default_timer() - start_timer
-        log.info('Completed cleanup of old Pokemon spawns. ' +
-                 '%d deleted in %.6f seconds.', rows, time_diff)
+        log.debug('Deleted %d old Pokemon entries.', rows)
+
+    time_diff = default_timer() - start_timer
+    log.debug('Completed cleanup of old pokemon spawns in %.6f seconds.',
+              time_diff)
 
 
 def db_clean_gyms(age_hours, gyms_age_days=30):
+    log.debug('Beginning cleanup of old gym data.')
+    start_timer = default_timer()
+
+    gym_info_timeout = datetime.utcnow() - timedelta(hours=age_hours)
+
     with Gym.database().execution_context():
-        log.info('Beginning cleanup of old gym data.')
-        start_timer = default_timer()
-        # Remove old GymDetails.
+        # Remove old GymDetails entries.
         query = (GymDetails
                  .delete()
-                 .where(GymDetails.last_scanned <
-                        (datetime.utcnow() - timedelta(hours=age_hours))))
+                 .where(GymDetails.last_scanned < gym_info_timeout))
         rows = query.execute()
-        log.info('Deleted %d old GymDetails.', rows)
+        log.debug('Deleted %d old GymDetails entries.', rows)
 
-        # Remove old Raid.
+        # Remove old Raid entries.
         query = (Raid
                  .delete()
-                 .where(Raid.end <
-                        (datetime.utcnow() - timedelta(hours=age_hours))))
+                 .where(Raid.end < gym_info_timeout))
         rows = query.execute()
-        log.info('Deleted %d old Raid.', rows)
+        log.debug('Deleted %d old Raid entries.', rows)
 
-        # Remove old GymMembers.
+        # Remove old GymMember entries.
         query = (GymMember
                  .delete()
-                 .where(GymMember.last_scanned <
-                        (datetime.utcnow() - timedelta(hours=age_hours))))
+                 .where(GymMember.last_scanned < gym_info_timeout))
         rows = query.execute()
-        log.info('Deleted %d old GymMember.', rows)
+        log.debug('Deleted %d old GymMember entries.', rows)
 
-        # Remove old GymPokemon.
+        # Remove old GymPokemon entries.
         query = (GymPokemon
                  .delete()
-                 .where(GymPokemon.last_seen <
-                        (datetime.utcnow() - timedelta(hours=age_hours))))
+                 .where(GymPokemon.last_seen < gym_info_timeout))
         rows = query.execute()
-        log.info('Deleted %d old GymPokemon.', rows)
+        log.debug('Deleted %d old GymPokemon entries.', rows)
 
-        # Remove old Gym.
-        query = (Gym
-                 .delete()
-                 .where(Gym.last_scanned <
-                        (datetime.utcnow() - timedelta(days=gyms_age_days))))
-        rows = query.execute()
-        log.info('Deleted %d old Gym.', rows)
-
-        time_diff = default_timer() - start_timer
-        log.info('Completed cleanup of old gym data in %.6f seconds.',
-                 time_diff)
+    time_diff = default_timer() - start_timer
+    log.debug('Completed cleanup of old gym data in %.6f seconds.',
+              time_diff)
 
 
 def db_clean_spawnpoints(step, age_hours, missed=5):
-    with SpawnPoint.database().execution_context():
-        log.info('Beginning cleanup of old spawnpoint data.')
-        start_timer = default_timer()
+    log.debug('Beginning cleanup of old spawnpoint data.')
+    start_timer = default_timer()
 
-        # Select old SpawnPoint.
+    spawnpoint_timeout = datetime.utcnow() - timedelta(hours=age_hours)
+
+    with SpawnPoint.database().execution_context():
+        # Select old SpawnPoint entries.
         query = (SpawnPoint
                  .select(SpawnPoint.id)
-                 .where((SpawnPoint.last_scanned <
-                         (datetime.utcnow() - timedelta(hours=age_hours))) &
+                 .where((SpawnPoint.last_scanned < spawnpoint_timeout) &
                         (SpawnPoint.missed_count > missed))
                  .dicts())
         old_sp = [(sp['id']) for sp in query]
 
         num_records = len(old_sp)
-        log.debug('Found %d old SpawnPoint.', num_records)
+        log.debug('Found %d old SpawnPoint entries.', num_records)
 
-        # Remove SpawnpointDetectionData associated with old SpawnPoint.
+        # Remove SpawnpointDetectionData entries associated to old spawnpoints.
         num_rows = 0
         for i in range(0, num_records, step):
             query = (SpawnpointDetectionData
@@ -2799,18 +2822,16 @@ def db_clean_spawnpoints(step, age_hours, missed=5):
                      .where((SpawnpointDetectionData.spawnpoint_id <<
                              old_sp[i:min(i + step, num_records)])))
             num_rows += query.execute()
-        log.info('Deleted %d SpawnpointDetectionData from old SpawnPoint.',
-                 num_rows)
 
-        # Remove old SpawnPointDetectionData.
+        # Remove old SpawnPointDetectionData entries.
         query = (SpawnpointDetectionData
                  .delete()
                  .where((SpawnpointDetectionData.scan_time <
-                         (datetime.utcnow() - timedelta(hours=age_hours)))))
-        num_rows = query.execute()
-        log.info('Deleted %d old SpawnpointDetectionData.', num_rows)
+                         spawnpoint_timeout)))
+        num_rows += query.execute()
+        log.debug('Deleted %d old SpawnpointDetectionData entries.', num_rows)
 
-        # Select ScannedLocation associated with old SpawnPoints.
+        # Select ScannedLocation entries associated to old spawnpoints.
         sl_delete = set()
         for i in range(0, num_records, step):
             query = (ScanSpawnPoint
@@ -2820,10 +2841,10 @@ def db_clean_spawnpoints(step, age_hours, missed=5):
                      .dicts())
             for sp in query:
                 sl_delete.add(sp['scannedlocation'])
-        log.debug('Found %d ScannedLocation from old SpawnPoint.',
+        log.debug('Found %d ScannedLocation entries from old spawnpoints.',
                   len(sl_delete))
 
-        # Remove ScanSpawnPoint associated with old SpawnPoint.
+        # Remove ScanSpawnPoint entries associated to old spawnpoints.
         num_rows = 0
         for i in range(0, num_records, step):
             query = (ScanSpawnPoint
@@ -2831,10 +2852,10 @@ def db_clean_spawnpoints(step, age_hours, missed=5):
                      .where((ScanSpawnPoint.spawnpoint <<
                              old_sp[i:min(i + step, num_records)])))
             num_rows += query.execute()
-        log.info('Deleted %d ScanSpawnPoint from old/bad SpawnPoint.',
-                 num_rows)
+        log.debug('Deleted %d ScanSpawnPoint entries from old spawnpoints.',
+                  num_rows)
 
-        # Remove old/bad SpawnPoint.
+        # Remove old and invalid SpawnPoint entries.
         num_rows = 0
         for i in range(0, num_records, step):
             query = (SpawnPoint
@@ -2842,12 +2863,12 @@ def db_clean_spawnpoints(step, age_hours, missed=5):
                      .where((SpawnPoint.id <<
                              old_sp[i:min(i + step, num_records)])))
             num_rows += query.execute()
-        log.info('Deleted %d old SpawnPoint.', num_rows)
+        log.debug('Deleted %d old SpawnPoint entries.', num_rows)
 
         sl_delete = list(sl_delete)
         num_records = len(sl_delete)
 
-        # Remove ScanSpawnPoint associated with old ScannedLocation.
+        # Remove ScanSpawnPoint entries associated with old scanned locations.
         num_rows = 0
         for i in range(0, num_records, step):
             query = (ScanSpawnPoint
@@ -2855,10 +2876,10 @@ def db_clean_spawnpoints(step, age_hours, missed=5):
                      .where((ScanSpawnPoint.scannedlocation <<
                              sl_delete[i:min(i + step, num_records)])))
             num_rows += query.execute()
-        log.info('Deleted %d ScanSpawnPoint from old ScannedLocation.',
-                 num_rows)
+        log.debug('Deleted %d ScanSpawnPoint entries from old scan locations.',
+                  num_rows)
 
-        # Remove ScannedLocation associated with old ScanSpawnPoint.
+        # Remove ScannedLocation entries associated with old spawnpoints.
         num_rows = 0
         for i in range(0, num_records, step):
             query = (ScannedLocation
@@ -2866,15 +2887,40 @@ def db_clean_spawnpoints(step, age_hours, missed=5):
                      .where((ScannedLocation.cellid <<
                              sl_delete[i:min(i + step, num_records)]) &
                             (ScannedLocation.last_modified <
-                             (datetime.utcnow() -
-                              timedelta(hours=age_hours)))))
+                             spawnpoint_timeout)))
             num_rows += query.execute()
-        log.info('Deleted %d ScannedLocation from old SpawnPoint.',
-                 num_rows)
+        log.debug('Deleted %d ScannedLocation entries from old spawnpoints.',
+                  num_rows)
 
-        time_diff = default_timer() - start_timer
-        log.info('Completed cleanup of old spawnpoint data in %.6f seconds.',
-                 time_diff)
+    time_diff = default_timer() - start_timer
+    log.debug('Completed cleanup of old spawnpoint data in %.6f seconds.',
+              time_diff)
+
+
+def db_clean_forts(age_hours):
+    log.debug('Beginning cleanup of old forts.')
+    start_timer = default_timer()
+
+    fort_timeout = datetime.utcnow() - timedelta(hours=age_hours)
+
+    with Gym.database().execution_context():
+        # Remove old Gym entries.
+        query = (Gym
+                 .delete()
+                 .where(Gym.last_scanned < fort_timeout))
+        rows = query.execute()
+        log.debug('Deleted %d old Gym entries.', rows)
+
+        # Remove old Pokestop entries.
+        query = (Pokestop
+                 .delete()
+                 .where(Pokestop.last_updated < fort_timeout))
+        rows = query.execute()
+        log.debug('Deleted %d old Pokestop entries.', rows)
+
+    time_diff = default_timer() - start_timer
+    log.debug('Completed cleanup of old forts in %.6f seconds.',
+              time_diff)
 
 
 def bulk_upsert(cls, data, db):

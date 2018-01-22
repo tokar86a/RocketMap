@@ -387,21 +387,29 @@ def get_args():
         type=int,
         default=1)
     group = parser.add_argument_group('Database Cleanup')
-    group.add_argument('-dbc', '--db-cleanup',
-                       help='Enable database regular cleanup thread.',
+    group.add_argument('-DC', '--db-cleanup',
+                       help='Enable regular database cleanup thread.',
                        action='store_true', default=False)
-    group.add_argument('-dbcp', '--db-cleanup-pokemon',
-                       help=('Clear Pokemon from database X hours ' +
-                             'after they disappear (0 to disable).'),
+    group.add_argument('-DCw', '--db-cleanup-worker',
+                       help=('Clear worker status from database after X ' +
+                             'minutes of inactivity (0 to disable).'),
+                       type=int, default=30)
+    group.add_argument('-DCp', '--db-cleanup-pokemon',
+                       help=('Clear pokemon from database X hours ' +
+                             'after they disappeared (0 to disable).'),
                        type=int, default=0)
-    group.add_argument('-dbcg', '--db-cleanup-gym',
-                       help=('Clear Gym details from database X ' +
-                             'hours after being scanned (0 to disable).'),
-                       type=int, default=3)
-    group.add_argument('-dbcs', '--db-cleanup-spawnpoint',
-                       help=('Clear Spawnpoint from database without a ' +
-                             'valid scan for X hours (0 to disable).'),
+    group.add_argument('-DCg', '--db-cleanup-gym',
+                       help=('Clear gym details from database X hours ' +
+                             'after last gym scan (0 to disable).'),
+                       type=int, default=8)
+    group.add_argument('-DCs', '--db-cleanup-spawnpoint',
+                       help=('Clear spawnpoint from database X hours ' +
+                             'after last valid scan (0 to disable).'),
                        type=int, default=720)
+    group.add_argument('-DCf', '--db-cleanup-forts',
+                       help=('Clear gyms and pokestops from database X days ' +
+                             'after last valid scan (0 to disable).'),
+                       type=int, default=0)
     parser.add_argument(
         '-wh',
         '--webhook',
