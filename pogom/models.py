@@ -1092,19 +1092,38 @@ class MainWorker(BaseModel):
     elapsed = IntegerField(default=0)
 
     @staticmethod
-    def get_account_stats():
+    def get_account_stats(age_minutes=30):
+        stats = {'working': 0, 'captcha': 0, 'failed': 0}
+        timeout = datetime.utcnow() - timedelta(minutes=age_minutes)
         with MainWorker.database().execution_context():
             account_stats = (MainWorker
                              .select(fn.SUM(MainWorker.accounts_working),
                                      fn.SUM(MainWorker.accounts_captcha),
                                      fn.SUM(MainWorker.accounts_failed))
+                             .where(MainWorker.last_modified >= timeout)
                              .scalar(as_tuple=True))
-        dict = {'working': 0, 'captcha': 0, 'failed': 0}
-        if account_stats[0] is not None:
-            dict = {'working': int(account_stats[0]),
+            if account_stats[0] is not None:
+                stats.update({
+                    'working': int(account_stats[0]),
                     'captcha': int(account_stats[1]),
-                    'failed': int(account_stats[2])}
-        return dict
+                    'failed': int(account_stats[2])
+                })
+        return stats
+
+    @staticmethod
+    def get_recent(age_minutes=30):
+        status = []
+        timeout = datetime.utcnow() - timedelta(minutes=age_minutes)
+        with MainWorker.database().execution_context():
+            query = (MainWorker
+                     .select()
+                     .where(MainWorker.last_modified >= timeout)
+                     .order_by(MainWorker.worker_name.asc())
+                     .dicts())
+
+            status = [dbmw for dbmw in query]
+
+        return status
 
 
 class WorkerStatus(LatLongModel):
@@ -1139,18 +1158,18 @@ class WorkerStatus(LatLongModel):
                 'longitude': status.get('longitude', None)}
 
     @staticmethod
-    def get_recent():
+    def get_recent(age_minutes=30):
         status = []
+        timeout = datetime.utcnow() - timedelta(minutes=age_minutes)
         with WorkerStatus.database().execution_context():
             query = (WorkerStatus
                      .select()
-                     .where((WorkerStatus.last_modified >=
-                             (datetime.utcnow() - timedelta(minutes=5))))
-                     .order_by(WorkerStatus.username)
+                     .where(WorkerStatus.last_modified >= timeout)
+                     .order_by(WorkerStatus.username.asc())
                      .dicts())
 
-            for s in query:
-                status.append(s)
+            status = [dbws for dbws in query]
+
         return status
 
     @staticmethod
@@ -2681,7 +2700,7 @@ def clean_db_loop(args):
             cycle += 1
             time.sleep(60)
         except Exception as e:
-            log.exception('Database cleanup failed: %s', e)
+            log.exception('Database cleanup failed: %s.', e)
 
 
 def db_cleanup_regular():

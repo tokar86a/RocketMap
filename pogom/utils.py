@@ -479,6 +479,9 @@ def get_args():
                               'STATUS_NAME as main worker name.'))
     parser.add_argument('-spp', '--status-page-password', default=None,
                         help='Set the status page password.')
+    parser.add_argument('-spf', '--status-page-filter',
+                        help='Filter worker status inactive for X minutes.',
+                        type=int, default=30)
     parser.add_argument('-hk', '--hash-key', default=None, action='append',
                         help='Key for hash server')
     parser.add_argument('-novc', '--no-version-check', action='store_true',
