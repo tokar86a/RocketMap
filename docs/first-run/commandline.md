@@ -22,14 +22,17 @@
                     GMAPS_KEY [--skip-empty] [-C] [-cd] [-np] [-ng] [-nr]
                     [-nk] [-ss] [-ssct SS_CLUSTER_TIME] [-speed] [-spin]
                     [-ams ACCOUNT_MAX_SPINS] [-kph KPH] [-hkph HLVL_KPH]
-                    [-ldur LURE_DURATION] [-pd PURGE_DATA] [-px PROXY] [-pxsc]
+                    [-ldur LURE_DURATION] [-px PROXY] [-pxsc]
                     [-pxt PROXY_TEST_TIMEOUT] [-pxre PROXY_TEST_RETRIES]
                     [-pxbf PROXY_TEST_BACKOFF_FACTOR]
                     [-pxc PROXY_TEST_CONCURRENCY] [-pxd PROXY_DISPLAY]
                     [-pxf PROXY_FILE] [-pxr PROXY_REFRESH]
                     [-pxo PROXY_ROTATION] --db-name DB_NAME --db-user DB_USER
                     --db-pass DB_PASS [--db-host DB_HOST] [--db-port DB_PORT]
-                    [--db-threads DB_THREADS] [-wh WEBHOOKS] [-gi] [-DC]
+                    [--db-threads DB_THREADS] [-DC] [-DCw DB_CLEANUP_WORKER]
+                    [-DCp DB_CLEANUP_POKEMON] [-DCg DB_CLEANUP_GYM]
+                    [-DCs DB_CLEANUP_SPAWNPOINT] [-DCf DB_CLEANUP_FORTS]
+                    [-wh WEBHOOKS] [-gi]
                     [--wh-types {pokemon,gym,raid,egg,tth,gym-info,pokestop,lure,captcha}]
                     [--wh-threads WH_THREADS] [-whc WH_CONCURRENCY]
                     [-whr WH_RETRIES] [-whct WH_CONNECT_TIMEOUT]
@@ -38,11 +41,11 @@
                     [--ssl-certificate SSL_CERTIFICATE]
                     [--ssl-privatekey SSL_PRIVATEKEY] [-ps [logs]]
                     [-slt STATS_LOG_TIMER] [-sn STATUS_NAME]
-                    [-spp STATUS_PAGE_PASSWORD] [-hk HASH_KEY] [-novc]
-                    [-vci VERSION_CHECK_INTERVAL] [-odt ON_DEMAND_TIMEOUT]
-                    [--disable-blacklist] [-tp TRUSTED_PROXIES]
-                    [--api-version API_VERSION] [--no-file-logs]
-                    [--log-path LOG_PATH] [--dump] [-exg]
+                    [-spp STATUS_PAGE_PASSWORD] [-spf STATUS_PAGE_FILTER]
+                    [-hk HASH_KEY] [-novc] [-vci VERSION_CHECK_INTERVAL]
+                    [-odt ON_DEMAND_TIMEOUT] [--disable-blacklist]
+                    [-tp TRUSTED_PROXIES] [--api-version API_VERSION]
+                    [--no-file-logs] [--log-path LOG_PATH] [--dump] [-exg]
                     [-v | --verbosity VERBOSE] [-Rh RARITY_HOURS]
                     [-Rf RARITY_UPDATE_FREQUENCY]
 
@@ -275,10 +278,6 @@ environment variables which override config file values which override defaults.
                             Change duration for lures set on pokestops. This is
                             useful for events that extend lure duration. [env var:
                             POGOMAP_LURE_DURATION]
-      -pd PURGE_DATA, --purge-data PURGE_DATA
-                            Clear Pokemon from database this many hours after they
-                            disappear (0 to disable). [env var:
-                            POGOMAP_PURGE_DATA]
       -px PROXY, --proxy PROXY
                             Proxy url (e.g. socks5://127.0.0.1:9050) [env var:
                             POGOMAP_PROXY]
@@ -318,7 +317,6 @@ environment variables which override config file values which override defaults.
                             var: POGOMAP_WEBHOOK]
       -gi, --gym-info       Get all details about gyms (causes an additional API
                             hit for every gym). [env var: POGOMAP_GYM_INFO]
-      -DC, --enable-clean   Enable DB cleaner. [env var: POGOMAP_ENABLE_CLEAN]
       --wh-types {pokemon,gym,raid,egg,tth,gym-info,pokestop,lure,captcha}
                             Defines the type of messages to send to webhooks. [env
                             var: POGOMAP_WH_TYPES]
@@ -368,6 +366,9 @@ environment variables which override config file values which override defaults.
       -spp STATUS_PAGE_PASSWORD, --status-page-password STATUS_PAGE_PASSWORD
                             Set the status page password. [env var:
                             POGOMAP_STATUS_PAGE_PASSWORD]
+      -spf STATUS_PAGE_FILTER, --status-page-filter STATUS_PAGE_FILTER
+                            Filter worker status inactive for X minutes. [env var:
+                            POGOMAP_STATUS_PAGE_FILTER]
       -hk HASH_KEY, --hash-key HASH_KEY
                             Key for hash server [env var: POGOMAP_HASH_KEY]
       -novc, --no-version-check
@@ -414,6 +415,29 @@ environment variables which override config file values which override defaults.
       --db-threads DB_THREADS
                             Number of db threads; increase if the db queue falls
                             behind. [env var: POGOMAP_DB_THREADS]
+
+    Database Cleanup:
+      -DC, --db-cleanup     Enable regular database cleanup thread. [env var:
+                            POGOMAP_DB_CLEANUP]
+      -DCw DB_CLEANUP_WORKER, --db-cleanup-worker DB_CLEANUP_WORKER
+                            Clear worker status from database after X minutes of
+                            inactivity (0 to disable). [env var:
+                            POGOMAP_DB_CLEANUP_WORKER]
+      -DCp DB_CLEANUP_POKEMON, --db-cleanup-pokemon DB_CLEANUP_POKEMON
+                            Clear pokemon from database X hours after they
+                            disappeared (0 to disable). [env var:
+                            POGOMAP_DB_CLEANUP_POKEMON]
+      -DCg DB_CLEANUP_GYM, --db-cleanup-gym DB_CLEANUP_GYM
+                            Clear gym details from database X hours after last gym
+                            scan (0 to disable). [env var: POGOMAP_DB_CLEANUP_GYM]
+      -DCs DB_CLEANUP_SPAWNPOINT, --db-cleanup-spawnpoint DB_CLEANUP_SPAWNPOINT
+                            Clear spawnpoint from database X hours after last
+                            valid scan (0 to disable). [env var:
+                            POGOMAP_DB_CLEANUP_SPAWNPOINT]
+      -DCf DB_CLEANUP_FORTS, --db-cleanup-forts DB_CLEANUP_FORTS
+                            Clear gyms and pokestops from database X days after
+                            last valid scan (0 to disable). [env var:
+                            POGOMAP_DB_CLEANUP_FORTS]
 
     Dynamic Rarity:
       -Rh RARITY_HOURS, --rarity-hours RARITY_HOURS
