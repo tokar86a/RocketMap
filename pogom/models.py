@@ -1784,12 +1784,12 @@ class Token(BaseModel):
                     token_ids.append(t.id)
                     tokens.append(t.token)
                 if tokens:
-                    log.debug('Retrived Token IDs: {}'.format(token_ids))
-                    result = DeleteQuery(Token).where(
-                        Token.id << token_ids).execute()
-                    log.debug('Deleted {} tokens.'.format(result))
+                    log.debug('Retrieved Token IDs: %s', token_ids)
+                    query = DeleteQuery(Token).where(Token.id << token_ids)
+                    rows = query.execute()
+                    log.debug('Claimed and removed %d captcha tokens.', rows)
         except OperationalError as e:
-            log.error('Failed captcha token transactional query: {}'.format(e))
+            log.exception('Failed captcha token transactional query: %s.', e)
 
         return tokens
 
@@ -1814,14 +1814,17 @@ class HashKeys(BaseModel):
     @staticmethod
     def get_stored_peaks():
         hashkeys = {}
-        with HashKeys.database().execution_context():
-            query = (HashKeys
-                     .select(HashKeys.key, HashKeys.peak)
-                     .where(HashKeys.last_updated >
-                            (datetime.utcnow() - timedelta(minutes=30)))
-                     .dicts())
-            for dbhk in query:
-                hashkeys[dbhk['key']] = dbhk['peak']
+        try:
+            with HashKeys.database().execution_context():
+                query = (HashKeys
+                         .select(HashKeys.key, HashKeys.peak)
+                         .where(HashKeys.last_updated >
+                                (datetime.utcnow() - timedelta(minutes=30)))
+                         .dicts())
+                for dbhk in query:
+                    hashkeys[dbhk['key']] = dbhk['peak']
+        except OperationalError as e:
+            log.exception('Failed to get hashing keys stored peaks: %s.', e)
 
         return hashkeys
 
@@ -2708,7 +2711,9 @@ def db_cleanup_regular():
     start_timer = default_timer()
 
     now = datetime.utcnow()
-
+    # http://docs.peewee-orm.com/en/latest/peewee/database.html#advanced-connection-management
+    # When using an execution context, a separate connection from the pool
+    # will be used inside the wrapped block and a transaction will be started.
     with Token.database().execution_context():
         # Remove unusable captcha tokens.
         query = (Token
