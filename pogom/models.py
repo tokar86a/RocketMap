@@ -2667,10 +2667,12 @@ def db_updater(q, db):
 
 def clean_db_loop(args):
     step = 250
-    cycle = 0
 
-    # Every 10 minutes (10 cycles) run full database cleanup.
-    full_cleanup_period_minutes = 10
+    # Run regular database cleanup once every minute.
+    regular_cleanup_secs = 60
+    # Run full database cleanup once every 10 minutes.
+    full_cleanup_timer = default_timer()
+    full_cleanup_secs = 600
     while True:
         try:
             db_cleanup_regular()
@@ -2679,7 +2681,8 @@ def clean_db_loop(args):
             if args.db_cleanup_worker > 0:
                 db_cleanup_worker_status(args.db_cleanup_worker)
 
-            if cycle % full_cleanup_period_minutes == 0:
+            # Check if it's time to run full database cleanup.
+            if (default_timer() - full_cleanup_timer > full_cleanup_secs):
                 # Remove old pokemon spawns.
                 if args.db_cleanup_pokemon > 0:
                     db_clean_pokemons(args.db_cleanup_pokemon)
@@ -2697,11 +2700,9 @@ def clean_db_loop(args):
                     db_clean_forts(args.db_cleanup_forts)
 
                 log.info('Full database cleanup completed.')
-                cycle = 0
+                full_cleanup_timer = default_timer()
 
-            # Run this cycle once every minute (60 seconds).
-            cycle += 1
-            time.sleep(60)
+            time.sleep(regular_cleanup_secs)
         except Exception as e:
             log.exception('Database cleanup failed: %s.', e)
 
