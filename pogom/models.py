@@ -1114,14 +1114,17 @@ class MainWorker(BaseModel):
     def get_recent(age_minutes=30):
         status = []
         timeout = datetime.utcnow() - timedelta(minutes=age_minutes)
-        with MainWorker.database().execution_context():
-            query = (MainWorker
-                     .select()
-                     .where(MainWorker.last_modified >= timeout)
-                     .order_by(MainWorker.worker_name.asc())
-                     .dicts())
+        try:
+            with MainWorker.database().execution_context():
+                query = (MainWorker
+                         .select()
+                         .where(MainWorker.last_modified >= timeout)
+                         .order_by(MainWorker.worker_name.asc())
+                         .dicts())
 
-            status = [dbmw for dbmw in query]
+                status = [dbmw for dbmw in query]
+        except Exception as e:
+            log.exception('Failed to retrieve main worker status: %s.', e)
 
         return status
 
@@ -1161,14 +1164,17 @@ class WorkerStatus(LatLongModel):
     def get_recent(age_minutes=30):
         status = []
         timeout = datetime.utcnow() - timedelta(minutes=age_minutes)
-        with WorkerStatus.database().execution_context():
-            query = (WorkerStatus
-                     .select()
-                     .where(WorkerStatus.last_modified >= timeout)
-                     .order_by(WorkerStatus.username.asc())
-                     .dicts())
+        try:
+            with WorkerStatus.database().execution_context():
+                query = (WorkerStatus
+                         .select()
+                         .where(WorkerStatus.last_modified >= timeout)
+                         .order_by(WorkerStatus.username.asc())
+                         .dicts())
 
-            status = [dbws for dbws in query]
+                status = [dbws for dbws in query]
+        except Exception as e:
+            log.exception('Failed to retrieve worker status: %s.', e)
 
         return status
 
@@ -1779,12 +1785,13 @@ class Token(BaseModel):
                          .select()
                          .where(Token.last_updated > valid_time)
                          .order_by(Token.last_updated.asc())
-                         .limit(limit))
+                         .limit(limit)
+                         .dicts())
                 for t in query:
-                    token_ids.append(t.id)
-                    tokens.append(t.token)
+                    token_ids.append(t['id'])
+                    tokens.append(t['token'])
                 if tokens:
-                    log.debug('Retrieved Token IDs: %s', token_ids)
+                    log.debug('Retrieved Token IDs: %s.', token_ids)
                     query = DeleteQuery(Token).where(Token.id << token_ids)
                     rows = query.execute()
                     log.debug('Claimed and removed %d captcha tokens.', rows)
@@ -2666,8 +2673,6 @@ def db_updater(q, db):
 
 
 def clean_db_loop(args):
-    step = 250
-
     # Run regular database cleanup once every minute.
     regular_cleanup_secs = 60
     # Run full database cleanup once every 10 minutes.
@@ -2682,7 +2687,8 @@ def clean_db_loop(args):
                 db_cleanup_worker_status(args.db_cleanup_worker)
 
             # Check if it's time to run full database cleanup.
-            if (default_timer() - full_cleanup_timer > full_cleanup_secs):
+            now = default_timer()
+            if now - full_cleanup_timer > full_cleanup_secs:
                 # Remove old pokemon spawns.
                 if args.db_cleanup_pokemon > 0:
                     db_clean_pokemons(args.db_cleanup_pokemon)
@@ -2693,14 +2699,14 @@ def clean_db_loop(args):
 
                 # Remove old and extinct spawnpoint data.
                 if args.db_cleanup_spawnpoint > 0:
-                    db_clean_spawnpoints(step, args.db_cleanup_spawnpoint)
+                    db_clean_spawnpoints(args.db_cleanup_spawnpoint)
 
                 # Remove old pokestop and gym locations.
                 if args.db_cleanup_forts > 0:
                     db_clean_forts(args.db_cleanup_forts)
 
                 log.info('Full database cleanup completed.')
-                full_cleanup_timer = default_timer()
+                full_cleanup_timer = now
 
             time.sleep(regular_cleanup_secs)
         except Exception as e:
@@ -2821,9 +2827,11 @@ def db_clean_gyms(age_hours, gyms_age_days=30):
               time_diff)
 
 
-def db_clean_spawnpoints(step, age_hours, missed=5):
+def db_clean_spawnpoints(age_hours, missed=5):
     log.debug('Beginning cleanup of old spawnpoint data.')
     start_timer = default_timer()
+    # Maximum number of variables to include in a single query.
+    step = 500
 
     spawnpoint_timeout = datetime.utcnow() - timedelta(hours=age_hours)
 

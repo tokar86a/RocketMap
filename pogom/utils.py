@@ -477,11 +477,6 @@ def get_args():
     parser.add_argument('-sn', '--status-name', default=str(os.getpid()),
                         help=('Enable status page database update using ' +
                               'STATUS_NAME as main worker name.'))
-    parser.add_argument('-spp', '--status-page-password', default=None,
-                        help='Set the status page password.')
-    parser.add_argument('-spf', '--status-page-filter',
-                        help='Filter worker status inactive for X minutes.',
-                        type=int, default=30)
     parser.add_argument('-hk', '--hash-key', default=None, action='append',
                         help='Key for hash server')
     parser.add_argument('-novc', '--no-version-check', action='store_true',
@@ -533,15 +528,22 @@ def get_args():
                          type=int, dest='verbose')
     rarity = parser.add_argument_group('Dynamic Rarity')
     rarity.add_argument('-Rh', '--rarity-hours',
-                        help=('Number of hours of Pokemon data to use' +
-                              ' to calculate dynamic rarity. Decimals' +
-                              ' allowed. Default: 48. 0 to use all data.'),
+                        help=('Number of hours of Pokemon data to use ' +
+                              'to calculate dynamic rarity. Decimals ' +
+                              'allowed. Default: 48. 0 to use all data.'),
                         type=float, default=48)
     rarity.add_argument('-Rf', '--rarity-update-frequency',
-                        help=('How often (in minutes) the dynamic rarity' +
-                              ' should be updated. Decimals allowed.' +
-                              ' Default: 0. 0 to disable.'),
+                        help=('How often (in minutes) the dynamic rarity ' +
+                              'should be updated. Decimals allowed. ' +
+                              'Default: 0. 0 to disable.'),
                         type=float, default=0)
+    statusp = parser.add_argument_group('Status Page')
+    statusp.add_argument('-SPp', '--status-page-password', default=None,
+                         help='Set the status page password.')
+    statusp.add_argument('-SPf', '--status-page-filter',
+                         help=('Filter worker status that are inactive for ' +
+                               'X minutes. Default: 30. 0 to disable.'),
+                         type=int, default=30)
     parser.set_defaults(DEBUG=False)
 
     args = parser.parse_args()
