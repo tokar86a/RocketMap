@@ -40,14 +40,14 @@
                     [-whlfu WH_LFU_SIZE] [-whfi WH_FRAME_INTERVAL]
                     [--ssl-certificate SSL_CERTIFICATE]
                     [--ssl-privatekey SSL_PRIVATEKEY] [-ps [logs]]
-                    [-slt STATS_LOG_TIMER] [-sn STATUS_NAME]
-                    [-spp STATUS_PAGE_PASSWORD] [-spf STATUS_PAGE_FILTER]
-                    [-hk HASH_KEY] [-novc] [-vci VERSION_CHECK_INTERVAL]
+                    [-slt STATS_LOG_TIMER] [-sn STATUS_NAME] [-hk HASH_KEY]
+                    [-novc] [-vci VERSION_CHECK_INTERVAL]
                     [-odt ON_DEMAND_TIMEOUT] [--disable-blacklist]
                     [-tp TRUSTED_PROXIES] [--api-version API_VERSION]
                     [--no-file-logs] [--log-path LOG_PATH] [--dump] [-exg]
                     [-v | --verbosity VERBOSE] [-Rh RARITY_HOURS]
-                    [-Rf RARITY_UPDATE_FREQUENCY]
+                    [-Rf RARITY_UPDATE_FREQUENCY] [-SPp STATUS_PAGE_PASSWORD]
+                    [-SPf STATUS_PAGE_FILTER]
 
 Args that start with '--' (eg. -a) can also be set in a config file
 (config/config.ini or specified via -cf or -scf). The recognized syntax
@@ -268,12 +268,12 @@ environment variables which override config file values which override defaults.
       -ams ACCOUNT_MAX_SPINS, --account-max-spins ACCOUNT_MAX_SPINS
                             Maximum number of Pokestop spins per hour. [env var:
                             POGOMAP_ACCOUNT_MAX_SPINS]
-      -kph KPH, --kph KPH   Set a maximum speed in km/hour for scanner movement. 0
-                            to disable. Default: 35. [env var: POGOMAP_KPH]
+      -kph KPH, --kph KPH   Set a maximum speed in km/hour for scanner movement.
+                            Default: 35, 0 to disable. [env var: POGOMAP_KPH]
       -hkph HLVL_KPH, --hlvl-kph HLVL_KPH
                             Set a maximum speed in km/hour for scanner movement,
-                            for high-level (L30) accounts. 0 to disable. Default:
-                            25. [env var: POGOMAP_HLVL_KPH]
+                            for high-level (L30) accounts. Default: 25, 0 to
+                            disable. [env var: POGOMAP_HLVL_KPH]
       -ldur LURE_DURATION, --lure-duration LURE_DURATION
                             Change duration for lures set on pokestops. This is
                             useful for events that extend lure duration. [env var:
@@ -363,12 +363,6 @@ environment variables which override config file values which override defaults.
       -sn STATUS_NAME, --status-name STATUS_NAME
                             Enable status page database update using STATUS_NAME
                             as main worker name. [env var: POGOMAP_STATUS_NAME]
-      -spp STATUS_PAGE_PASSWORD, --status-page-password STATUS_PAGE_PASSWORD
-                            Set the status page password. [env var:
-                            POGOMAP_STATUS_PAGE_PASSWORD]
-      -spf STATUS_PAGE_FILTER, --status-page-filter STATUS_PAGE_FILTER
-                            Filter worker status inactive for X minutes. [env var:
-                            POGOMAP_STATUS_PAGE_FILTER]
       -hk HASH_KEY, --hash-key HASH_KEY
                             Key for hash server [env var: POGOMAP_HASH_KEY]
       -novc, --no-version-check
@@ -405,46 +399,56 @@ environment variables which override config file values which override defaults.
                             var: POGOMAP_VERBOSITY]
 
     Database:
-      --db-name DB_NAME     Name of the database to be used. [env var:
-                            POGOMAP_DB_NAME]
+      --db-name DB_NAME     Name of the database to be used.
+                            [env var: POGOMAP_DB_NAME]
       --db-user DB_USER     Username for the database. [env var: POGOMAP_DB_USER]
       --db-pass DB_PASS     Password for the database. [env var: POGOMAP_DB_PASS]
-      --db-host DB_HOST     IP or hostname for the database. [env var:
-                            POGOMAP_DB_HOST]
+      --db-host DB_HOST     IP or hostname for the database.
+                            [env var: POGOMAP_DB_HOST]
       --db-port DB_PORT     Port for the database. [env var: POGOMAP_DB_PORT]
       --db-threads DB_THREADS
                             Number of db threads; increase if the db queue falls
                             behind. [env var: POGOMAP_DB_THREADS]
 
     Database Cleanup:
-      -DC, --db-cleanup     Enable regular database cleanup thread. [env var:
-                            POGOMAP_DB_CLEANUP]
+      -DC, --db-cleanup     Enable regular database cleanup thread.
+                            [env var: POGOMAP_DB_CLEANUP]
       -DCw DB_CLEANUP_WORKER, --db-cleanup-worker DB_CLEANUP_WORKER
                             Clear worker status from database after X minutes of
-                            inactivity (0 to disable). [env var:
-                            POGOMAP_DB_CLEANUP_WORKER]
+                            inactivity. Default: 30, 0 to disable.
+                            [env var: POGOMAP_DB_CLEANUP_WORKER]
       -DCp DB_CLEANUP_POKEMON, --db-cleanup-pokemon DB_CLEANUP_POKEMON
                             Clear pokemon from database X hours after they
-                            disappeared (0 to disable). [env var:
-                            POGOMAP_DB_CLEANUP_POKEMON]
+                            disappeared. Default: 0, 0 to disable.
+                            [env var: POGOMAP_DB_CLEANUP_POKEMON]
       -DCg DB_CLEANUP_GYM, --db-cleanup-gym DB_CLEANUP_GYM
                             Clear gym details from database X hours after last gym
-                            scan (0 to disable). [env var: POGOMAP_DB_CLEANUP_GYM]
+                            scan. Default: 8, 0 to disable.
+                            [env var: POGOMAP_DB_CLEANUP_GYM]
       -DCs DB_CLEANUP_SPAWNPOINT, --db-cleanup-spawnpoint DB_CLEANUP_SPAWNPOINT
                             Clear spawnpoint from database X hours after last
-                            valid scan (0 to disable). [env var:
-                            POGOMAP_DB_CLEANUP_SPAWNPOINT]
+                            valid scan. Default: 720, 0 to disable.
+                            [env var: POGOMAP_DB_CLEANUP_SPAWNPOINT]
       -DCf DB_CLEANUP_FORTS, --db-cleanup-forts DB_CLEANUP_FORTS
                             Clear gyms and pokestops from database X days after
-                            last valid scan (0 to disable). [env var:
-                            POGOMAP_DB_CLEANUP_FORTS]
+                            last valid scan. Default: 0, 0 to disable.
+                            [env var: POGOMAP_DB_CLEANUP_FORTS]
 
     Dynamic Rarity:
       -Rh RARITY_HOURS, --rarity-hours RARITY_HOURS
                             Number of hours of Pokemon data to use to calculate
-                            dynamic rarity. Decimals allowed. Default: 48. 0 to
+                            dynamic rarity. Decimals allowed. Default: 48, 0 to
                             use all data. [env var: POGOMAP_RARITY_HOURS]
       -Rf RARITY_UPDATE_FREQUENCY, --rarity-update-frequency RARITY_UPDATE_FREQUENCY
                             How often (in minutes) the dynamic rarity should be
-                            updated. Decimals allowed. Default: 0. 0 to disable.
+                            updated. Decimals allowed. Default: 0, 0 to disable.
                             [env var: POGOMAP_RARITY_UPDATE_FREQUENCY]
+
+    Status Page:
+      -SPp STATUS_PAGE_PASSWORD, --status-page-password STATUS_PAGE_PASSWORD
+                            Set the status page password.
+                            [env var: POGOMAP_STATUS_PAGE_PASSWORD]
+      -SPf STATUS_PAGE_FILTER, --status-page-filter STATUS_PAGE_FILTER
+                            Filter worker status that are inactive for X minutes.
+                            Default: 30, 0 to disable.
+                            [env var: POGOMAP_STATUS_PAGE_FILTER]
