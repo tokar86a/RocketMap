@@ -18,8 +18,8 @@
                     [-ld LOGIN_DELAY] [-lr LOGIN_RETRIES] [-mf MAX_FAILURES]
                     [-me MAX_EMPTY] [-bsr BAD_SCAN_RETRY]
                     [-msl MIN_SECONDS_LEFT] [-dc] [-H HOST] [-P PORT]
-                    [-L LOCALE] [-c] [-m MOCK] [-ns] [-os] [-sc] [-nfl] -k
-                    GMAPS_KEY [--skip-empty] [-C] [-cd] [-np] [-ng] [-nr]
+                    [-L LOCALE] [-c] [-m MOCK] [-ns] [-os] [-sc] [-nfl]
+                    -k GMAPS_KEY [--skip-empty] [-C] [-cd] [-np] [-ng] [-nr]
                     [-nk] [-ss] [-ssct SS_CLUSTER_TIME] [-speed] [-spin]
                     [-ams ACCOUNT_MAX_SPINS] [-kph KPH] [-hkph HLVL_KPH]
                     [-ldur LURE_DURATION] [-px PROXY] [-pxsc]
@@ -391,7 +391,7 @@ environment variables which override config file values which override defaults.
       --dump                Dump censored debug info about the environment and
                             auto-upload to hastebin.com. [env var: POGOMAP_DUMP]
       -exg, --ex-gyms       Fetch OSM parks within geofence and flag gyms that are
-                            candidates for ex raids. Only required once per area.
+                            candidates for EX raids. Only required once per area.
                             [env var: POGOMAP_EX_GYMS]
       -v                    Show debug messages from RocketMap and pgoapi. Can be
                             repeated up to 3 times.
