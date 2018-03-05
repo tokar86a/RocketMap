@@ -1,4 +1,4 @@
-/*eslint no-unused-vars: "off"*/
+/* eslint no-unused-vars: "off" */
 
 var noLabelsStyle = [{
     featureType: 'poi',
@@ -866,6 +866,34 @@ var StoreOptions = {
         default: '',
         type: StoreTypes.Number
     },
+    'remember_text_level_notify': {
+        default: 0,
+        type: StoreTypes.Number
+    },
+    'excludedRarity': {
+        default: 0, // 0: none, 1: <=Common, 2: <=Uncommon, 3: <=Rare, 4: <=Very Rare, 5: <=Ultra Rare
+        type: StoreTypes.Number
+    },
+    'showRaids': {
+        default: false,
+        type: StoreTypes.Boolean
+    },
+    'showParkRaidsOnly': {
+        default: false,
+        type: StoreTypes.Boolean
+    },
+    'showActiveRaidsOnly': {
+        default: false,
+        type: StoreTypes.Boolean
+    },
+    'showRaidMinLevel': {
+        default: 1,
+        type: StoreTypes.Number
+    },
+    'showRaidMaxLevel': {
+        default: 5,
+        type: StoreTypes.Number
+    },
     'showGyms': {
         default: false,
         type: StoreTypes.Boolean
@@ -874,9 +902,13 @@ var StoreOptions = {
         default: false,
         type: StoreTypes.Boolean
     },
+    'showParkGymsOnly': {
+        default: false,
+        type: StoreTypes.Boolean
+    },
     'showOpenGymsOnly': {
-        default: 0,
-        type: StoreTypes.Number
+        default: false,
+        type: StoreTypes.Boolean
     },
     'showTeamGymsOnly': {
         default: 0,
@@ -891,10 +923,14 @@ var StoreOptions = {
         type: StoreTypes.Number
     },
     'maxGymLevel': {
-        default: 10,
+        default: 6,
         type: StoreTypes.Number
     },
     'showPokemon': {
+        default: true,
+        type: StoreTypes.Boolean
+    },
+    'showPokemonStats': {
         default: true,
         type: StoreTypes.Boolean
     },
@@ -962,21 +998,73 @@ var StoreOptions = {
         default: 0,
         type: StoreTypes.Number
     },
+    'scaleByRarity': {
+        default: true,
+        type: StoreTypes.Boolean
+    },
+    'upscalePokemon': {
+        default: false,
+        type: StoreTypes.Boolean
+    },
+    'upscaledPokemon': {
+        default: [],
+        type: StoreTypes.JSON
+    },
     'searchMarkerStyle': {
-        default: 'google',
+        default: 'pokesition',
         type: StoreTypes.String
     },
     'locationMarkerStyle': {
-        default: 'none',
-        type: StoreTypes.String
-    },
-    'gymMarkerStyle': {
-        default: 'shield',
+        default: 'mobile',
         type: StoreTypes.String
     },
     'zoomLevel': {
         default: 16,
         type: StoreTypes.Number
+    },
+    'maxClusterZoomLevel': {
+        default: 14,
+        type: StoreTypes.Number
+    },
+    'clusterZoomOnClick': {
+        default: false,
+        type: StoreTypes.Boolean
+    },
+    'clusterGridSize': {
+        default: 60,
+        type: StoreTypes.Number
+    },
+    'processPokemonChunkSize': {
+        default: 100,
+        type: StoreTypes.Number
+    },
+    'processPokemonIntervalMs': {
+        default: 100,
+        type: StoreTypes.Number
+    },
+    'mapServiceProvider': {
+        default: 'googlemaps',
+        type: StoreTypes.String
+    },
+    'isBounceDisabled': {
+        default: false,
+        type: StoreTypes.Boolean
+    },
+    'showLocationMarker': {
+        default: true,
+        type: StoreTypes.Boolean
+    },
+    'isLocationMarkerMovable': {
+        default: false,
+        type: StoreTypes.Boolean
+    },
+    'showSearchMarker': {
+        default: true,
+        type: StoreTypes.Boolean
+    },
+    'isSearchMarkerMovable': {
+        default: false,
+        type: StoreTypes.Boolean
     }
 }
 
@@ -1018,6 +1106,26 @@ var mapData = {
     spawnpoints: {}
 }
 
+// Populated by a JSON request.
+var pokemonRarities = {}
+
+function updatePokemonRarities() {
+    $.getJSON('static/dist/data/rarity.json').done(function (data) {
+        pokemonRarities = data
+    }).fail(function () {
+        // Could be disabled/removed.
+        console.log("Couldn't load dynamic rarity JSON.")
+    })
+}
+
+function getPokemonRarity(pokemonId) {
+    if (pokemonRarities.hasOwnProperty(pokemonId)) {
+        return pokemonRarities[pokemonId]
+    }
+
+    return ''
+}
+
 function getGoogleSprite(index, sprite, displayHeight) {
     displayHeight = Math.max(displayHeight, 3)
     var scale = displayHeight / sprite.iconHeight
@@ -1038,30 +1146,83 @@ function getGoogleSprite(index, sprite, displayHeight) {
     }
 }
 
-function setupPokemonMarker(item, map, isBounceDisabled) {
-    // Scale icon size up with the map exponentially
-    var iconSize = 2 + (map.getZoom() - 3) * (map.getZoom() - 3) * 0.2 + Store.get('iconSizeModifier')
-    var pokemonIndex = item['pokemon_id'] - 1
-    var sprite = pokemonSprites
-    var icon = getGoogleSprite(pokemonIndex, sprite, iconSize)
+function setupPokemonMarkerDetails(item, map, scaleByRarity = true, isNotifyPkmn = false) {
+    const pokemonIndex = item['pokemon_id'] - 1
+    const sprite = pokemonSprites
 
-    var animationDisabled = false
-    if (isBounceDisabled === true) {
-        animationDisabled = true
+    var markerDetails = {
+        sprite: sprite
     }
+    var iconSize = (map.getZoom() - 3) * (map.getZoom() - 3) * 0.2 + Store.get('iconSizeModifier')
+    rarityValue = 2
+
+    if (Store.get('upscalePokemon')) {
+        const upscaledPokemon = Store.get('upscaledPokemon')
+        var rarityValue = isNotifyPkmn || (upscaledPokemon.indexOf(item['pokemon_id']) !== -1) ? 29 : 2
+    }
+
+    if (scaleByRarity) {
+        const rarityValues = {
+            'very rare': 30,
+            'ultra rare': 40,
+            'legendary': 50
+        }
+
+        const pokemonRarity = getPokemonRarity(item['pokemon_id']).toLowerCase()
+
+        if (rarityValues.hasOwnProperty(pokemonRarity)) {
+            rarityValue = rarityValues[pokemonRarity]
+        }
+    }
+
+    iconSize += rarityValue
+    markerDetails.rarityValue = rarityValue
+    markerDetails.icon = getGoogleSprite(pokemonIndex, sprite, iconSize)
+    markerDetails.iconSize = iconSize
+
+    return markerDetails
+}
+
+function setupPokemonMarker(item, map, isBounceDisabled, scaleByRarity = true, isNotifyPkmn = false) {
+    // Scale icon size up with the map exponentially, also size with rarity.
+    const markerDetails = setupPokemonMarkerDetails(item, map, scaleByRarity, isNotifyPkmn)
+    const icon = markerDetails.icon
 
     var marker = new google.maps.Marker({
         position: {
             lat: item['latitude'],
             lng: item['longitude']
         },
-        zIndex: 9999,
-        map: map,
+        zIndex: 9949 + markerDetails.rarityValue,
         icon: icon,
-        animationDisabled: animationDisabled
+        animationDisabled: isBounceDisabled
     })
 
     return marker
+}
+
+function updatePokemonMarker(item, map, scaleByRarity = true, isNotifyPkmn = false) {
+    // Scale icon size up with the map exponentially, also size with rarity.
+    const markerDetails = setupPokemonMarkerDetails(item, map, scaleByRarity, isNotifyPkmn)
+    const icon = markerDetails.icon
+    const marker = item.marker
+
+    marker.setIcon(icon)
+}
+
+function updatePokemonLabel(item) {
+    // Only update label when Pokémon has been encountered.
+    if (item['cp'] !== null && item['cpMultiplier'] !== null) {
+        item.marker.infoWindow.setContent(pokemonLabel(item))
+    }
+}
+
+function updatePokemonLabels(pokemonList) {
+    $.each(pokemonList, function (key, value) {
+        var item = pokemonList[key]
+
+        updatePokemonLabel(item)
+    })
 }
 
 function isTouchDevice() {

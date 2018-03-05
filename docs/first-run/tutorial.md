@@ -1,34 +1,42 @@
-# Tutorial Completion
-## RocketMap's tutorial completion for new accounts (includes getting accounts to level 2.)
-This is a guide on how to complete the Pokémon Go tutorial steps and becoming
-level 2 on your accounts as fast as possible, so you can use `-tut` once
-on all accounts and disable it again afterwards.
+# Account leveling
+RocketMap completes the tutorial steps on all accounts on first log in and sets a Pokémon as buddy if it does not have one.
 
-## Instruction
-* We assume you are running a basic RocketMap installation. Using the hashing
-service with the latest API version will avoid accounts being flagged.
-* Create a ``config/config.tutorial.ini`` file by copying and renaming
-``config/config.ini.example`` and make the following changes:
-* Config changes are:
-	* Set location next to at least one known Pokestop, a cluster is preferred.
-	* Set step distance to ``st: 1``.
-	* Set scan delay ``sd`` to a value which provides enough calls during the
-	following set search time (a good value is around ``sd: 15`` or lower).
-	* Set the account search interval to approx. ``asi: 120``.
-	* Set the account rest interval as high as possible so all accounts get
-	cycled and none return, a safe value is ``ari: 36000``.
-	* Set login delay to at least ``login-delay: 1`` to avoid throttling.
-* Put the accounts that need to complete the tutorial and need to level up 
-into your ``accounts.csv`` file.
-* Set up an instance with the following flags:
-	* ``--complete-tutorial`` or just ``-tut``
-	* ``--config config/config.tutorial.ini`` or just
-	``-cf config/config.tutorial.ini`` to use a designated config file.
-	* ``--accountcsv PATH/accounts.csv`` or just ``-ac PATH/accounts.csv``
-	* ``-w WORKER`` to set your simultaneously working accounts to a reasonable
-	number, considering hash key limit and throttling. You can have at least 10
-	accounts running at the same time without any problems.
-* If you are not using fresh accounts and you are not using the hashing service,
-prepare for captchas. Set up your RocketMap accordingly.
-* Enable ``-v`` in process if you want to see the debug logs.
-* Let it run and your accounts will complete the tutorial and rise to level 2.
+Accounts with level 1 will get captchas after some time and will stop working unless you setup [catpcha handling](http://rocketmap.readthedocs.io/en/develop/first-run/captchas.html):
+
+
+To avoid this, it's recommended to level accounts at least to level 2. It's as simple as spin a Pokéstop and there are two ways to do so from RM:
+
+ * Enabling pokestop spinning during regular scanning
+ * Using the level-up tool provided with RM
+
+## Pokéstop Spinning
+
+To enable Pokéstop spinning, add pokestop-spinning to your configuration file, or -spin to your cli parameters.
+
+```
+pokestop-spinning
+```
+
+With this setting enabled, RM's scanner instances will try to spin a Pokéstop (50% chance to spin if the account has a level greater than 1) if it's within range and the `--account-max-spins` limit hasn't been reached (default is 20 per account per hour).
+
+This setting could be enough for some maps with a high density of Pokéstops, as the accounts will get near one soon enough to avoid the captcha, otherwise you will need to enable [catpcha handling](http://rocketmap.readthedocs.io/en/develop/first-run/captchas.html) to keep them working until until there is a Pokéstop within range.
+
+## Level-up tool
+
+In the tools folder there is a small python script that will go through the account list, send a map request at a location, and spin all Pokéstops in range (following `account-max-spins` limit). With this tool, you can make sure all accounts are level 2 before using them for scanning.
+
+The tool uses the same config file and options as RM (the ones that apply) so the setup and run is pretty simple, just change the location to some coordinates that are near 1 or more Pokéstops and change the worker setting to the number of accounts you want to level up simultaneously.
+
+In the console you will see the initial level of each account, the Pokéstop spinning and the final level. The script will end automatically when all accounts have finished the process or have failed 3 times.
+
+To run the script, go to RM's root folder and execute:
+
+```
+python tools/levelup.py
+```
+
+All command line flags available in RM can be used here too (b(but not all of them will have an effect). So you could increase `account-max-spins` and change location and workers from the command line without needing to modify the config file with something like:
+
+```
+python tools/levelup.py -w 30 -l 40.417281,-3.683235 -ams 1000
+```
